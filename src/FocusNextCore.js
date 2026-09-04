@@ -106,6 +106,14 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
   }
 
   function nextSibling(note) {
+    return adjacentSibling(note, 1);
+  }
+
+  function previousSibling(note) {
+    return adjacentSibling(note, -1);
+  }
+
+  function adjacentSibling(note, direction) {
     const parent = nativeMember(note, "parentNote");
     if (!parent) throw new Error("当前卡片没有父节点，无法进入下一张");
     const siblings = nativeItems(nativeMember(parent, "childNotes"));
@@ -119,8 +127,10 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
       }
     }
     if (currentIndex < 0) throw new Error("当前卡片不在父节点的同级列表中");
-    if (currentIndex + 1 >= siblings.length) throw new Error("已经是最后一张同级卡片");
-    return siblings[currentIndex + 1];
+    const targetIndex = currentIndex + direction;
+    if (targetIndex < 0) throw new Error("已经是第一张同级卡片");
+    if (targetIndex >= siblings.length) throw new Error("已经是最后一张同级卡片");
+    return siblings[targetIndex];
   }
 
   function showMessage(addon, message) {
@@ -135,6 +145,14 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
   }
 
   function focusNext(addon) {
+    return focusAdjacent(addon, 1);
+  }
+
+  function focusPrevious(addon) {
+    return focusAdjacent(addon, -1);
+  }
+
+  function focusAdjacent(addon, direction) {
     const application = Application.sharedInstance();
     const studyController = application.studyController(addon && addon.window);
     const notebookController = nativeMember(studyController, "notebookController");
@@ -160,19 +178,19 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
     const lastTarget = addon && addon.__focusNextLastTarget;
     if (lastTarget && observedId && lastSourceId && observedId === lastSourceId) current = lastTarget;
 
-    const next = nextSibling(current);
-    const nextId = noteIdentifier(next);
-    if (!nextId) throw new Error("下一张卡片缺少笔记 ID");
+    const target = adjacentSibling(current, direction);
+    const targetId = noteIdentifier(target);
+    if (!targetId) throw new Error(`${direction > 0 ? "下一张" : "上一张"}卡片缺少笔记 ID`);
 
     function focusMindMap() {
-      studyController.focusNoteInMindMapById(nextId);
+      studyController.focusNoteInMindMapById(targetId);
     }
 
-    notebookController.changeFocusToNote(next);
+    notebookController.changeFocusToNote(target);
     focusMindMap();
     if (addon) {
       addon.__focusNextLastSourceId = noteIdentifier(current);
-      addon.__focusNextLastTarget = next;
+      addon.__focusNextLastTarget = target;
     }
 
     const runId = Number(addon && addon.__focusNextRunId || 0) + 1;
@@ -196,7 +214,7 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
         retryFocus(1);
       });
     }
-    return { current, next, nextId };
+    return { current, next: target, nextId: targetId };
   }
 
   function enabled() {
@@ -220,5 +238,5 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
     return next;
   }
 
-  return { nativeMember, nativeItems, noteIdentifier, currentNote, rememberCurrent, nextSibling, focusNext, showMessage, enabled, setEnabled };
+  return { nativeMember, nativeItems, noteIdentifier, currentNote, rememberCurrent, nextSibling, previousSibling, focusNext, focusPrevious, showMessage, enabled, setEnabled };
 })();

@@ -38,6 +38,10 @@ function createFocusNextAddon() {
     },
 
     focusNext: function () {
+      if (self.__focusNextSuppressTap) {
+        self.__focusNextSuppressTap = false;
+        return;
+      }
       try {
         __FOCUS_NEXT_CORE_GLOBAL__.focusNext(self);
       } catch (error) {
@@ -45,6 +49,10 @@ function createFocusNextAddon() {
         __FOCUS_NEXT_CORE_GLOBAL__.showMessage(self, message);
         console.log(`[Focus Next] 切换失败：${message}`);
       }
+    },
+
+    handleFocusNextButtonPan: function (recognizer) {
+      __FOCUS_NEXT_UI_GLOBAL__.handleButtonPan(self, recognizer);
     },
   });
 }
