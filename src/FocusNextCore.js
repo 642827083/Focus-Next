@@ -1,7 +1,7 @@
 var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
   const ENABLED_KEY = "cn.marginnote.focus-next.enabled";
 
-  function nativeMember(object, key) {
+  function member(object, key) {
     if (!object) return undefined;
     let value;
     try { value = object[key]; } catch (ignored) { value = undefined; }
@@ -17,226 +17,173 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
     return value;
   }
 
-  function nativeItems(list) {
-    if (!list) return [];
-    let rawCount;
+  function pathMember(object, path) {
+    if (!object || !path) return undefined;
+    let value;
     try {
-      rawCount = typeof list.count === "function" ? list.count() : list.count !== undefined ? list.count : list.length;
-    } catch (ignored) { return []; }
-    const count = Number(rawCount);
-    if (!Number.isFinite(count) || count < 1) return [];
-    const items = [];
-    for (let index = 0; index < count; index += 1) {
-      try {
-        items.push(typeof list.objectAtIndex === "function" ? list.objectAtIndex(index) : list[index]);
-      } catch (ignored) {}
+      if (typeof object.valueForKeyPath === "function") value = object.valueForKeyPath(path);
+    } catch (ignored) {}
+    if (value !== undefined && value !== null) return value;
+    const parts = String(path).split(".");
+    value = object;
+    for (const part of parts) {
+      value = member(value, part);
+      if (value === undefined || value === null) return undefined;
     }
-    return items.filter(function (item) { return item !== undefined && item !== null; });
+    return value;
   }
 
-  function noteIdentifier(note) {
-    return String(nativeMember(note, "noteId") || nativeMember(note, "noteid") || nativeMember(note, "id") || "");
+  function items(list) {
+    if (!list) return [];
+    let count;
+    try { count = typeof list.count === "function" ? list.count() : list.count !== undefined ? list.count : list.length; } catch (ignored) { return []; }
+    count = Number(count);
+    if (!Number.isFinite(count) || count < 1) return [];
+    const result = [];
+    for (let index = 0; index < count; index += 1) {
+      try { result.push(typeof list.objectAtIndex === "function" ? list.objectAtIndex(index) : list[index]); } catch (ignored) {}
+    }
+    return result.filter(function (value) { return value !== undefined && value !== null; });
   }
 
-  function noteFromSelectedView(selectedView) {
-    const candidates = [
-      nativeMember(selectedView, "note"),
-      nativeMember(selectedView, "node"),
-      nativeMember(selectedView, "mindMapNode"),
-      nativeMember(selectedView, "mindmapNode"),
-      selectedView,
-    ];
-    for (const candidate of candidates) {
-      if (!candidate) continue;
-      if (noteIdentifier(candidate) || nativeMember(candidate, "noteTitle") !== undefined) return candidate;
-      const nested = nativeMember(candidate, "note");
-      if (nested && (noteIdentifier(nested) || nativeMember(nested, "noteTitle") !== undefined)) return nested;
+  function studyController(addon) {
+    const application = Application.sharedInstance();
+    if (!application || typeof application.studyController !== "function") return undefined;
+    const focusWindow = member(application, "focusWindow");
+    const candidates = [addon && addon.window, focusWindow, undefined];
+    for (const window of candidates) {
+      try {
+        const controller = window === undefined ? application.studyController() : application.studyController(window);
+        if (controller) return controller;
+      } catch (ignored) {}
     }
     return undefined;
   }
 
-  function currentNote(addon) {
-    const application = Application.sharedInstance();
-    const studyController = application.studyController(addon && addon.window);
-    const notebookController = nativeMember(studyController, "notebookController");
-    const direct = nativeMember(notebookController, "focusNote") ||
-      nativeMember(notebookController, "visibleFocusNote") ||
-      nativeMember(notebookController, "currentNote") ||
-      nativeMember(notebookController, "focusedNote") ||
-      nativeMember(studyController, "focusNote") ||
-      nativeMember(studyController, "visibleFocusNote") ||
-      nativeMember(studyController, "currentNote") ||
-      nativeMember(studyController, "focusedNote");
-    if (direct) return direct;
-    const mindmapView = nativeMember(notebookController, "mindmapView");
-    const selected = nativeItems(nativeMember(mindmapView, "selViewLst"))
-      .concat(nativeItems(nativeMember(notebookController, "selViewLst")));
-    const fallbackViews = [
-      nativeMember(mindmapView, "focusView"),
-      nativeMember(mindmapView, "focusedView"),
-      nativeMember(mindmapView, "selectedView"),
-      nativeMember(mindmapView, "currentView"),
-      nativeMember(mindmapView, "activeView"),
-      nativeMember(mindmapView, "focusNode"),
-      nativeMember(mindmapView, "focusedNode"),
-      nativeMember(mindmapView, "selectedNode"),
-      nativeMember(mindmapView, "currentNode"),
-      nativeMember(mindmapView, "activeNode"),
-      nativeMember(mindmapView, "focusMindMapNode"),
-      nativeMember(mindmapView, "currentMindMapNode"),
-    ].filter(function (value) { return value !== undefined && value !== null; });
-    for (const fallbackView of fallbackViews) {
-      const fallbackNote = noteFromSelectedView(fallbackView);
-      if (fallbackNote) return fallbackNote;
+  function noteId(note) {
+    return String(member(note, "noteId") || member(note, "noteid") || member(note, "id") || "");
+  }
+
+  function asNote(value) {
+    if (!value) return undefined;
+    const candidates = [member(value, "note"), member(value, "node"), member(value, "mindMapNode"), member(value, "mindmapNode"), member(value, "view"), value];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      if (noteId(candidate) || member(candidate, "noteTitle") !== undefined) return candidate;
+      const nested = member(candidate, "note");
+      if (nested && (noteId(nested) || member(nested, "noteTitle") !== undefined)) return nested;
     }
-    if (!selected.length) throw new Error("请先在脑图中选中或聚焦一张卡片");
-    const note = noteFromSelectedView(selected[0]);
-    if (!note) throw new Error("未能读取当前脑图卡片");
+    return undefined;
+  }
+
+  function focusCandidates(addon) {
+    const controller = studyController(addon);
+    const notebook = member(controller, "notebookController");
+    const mindmap = member(notebook, "mindmapView");
+    const owners = [notebook, controller, mindmap];
+    const keys = ["focusNote", "visibleFocusNote", "focusedNote", "currentFocusNote", "currentNote", "activeNote", "focusNode", "focusedNode", "focusMindMapNode", "currentMindMapNode", "focusView", "focusedView", "selectedView"];
+    const result = [];
+    for (const owner of owners) {
+      for (const key of keys) {
+        const note = asNote(member(owner, key));
+        if (!note || !noteId(note)) continue;
+        if (!result.some(function (item) { return noteId(item.note) === noteId(note); })) result.push({ note, source: key });
+      }
+    }
+    const paths = [
+      "notebookController.focusNote",
+      "notebookController.visibleFocusNote",
+      "notebookController.focusedNote",
+      "notebookController.currentFocusNote",
+      "notebookController.mindmapView.focusNote",
+      "notebookController.mindmapView.focusNode",
+      "notebookController.mindmapView.focusView",
+    ];
+    for (const path of paths) {
+      const note = asNote(pathMember(controller, path));
+      if (note && noteId(note) && !result.some(function (item) { return noteId(item.note) === noteId(note); })) result.push({ note, source: path });
+    }
+    return result;
+  }
+
+  function currentFocus(addon) {
+    const candidates = focusCandidates(addon);
+    return candidates.length ? candidates[0].note : undefined;
+  }
+
+  function rememberFocus(addon) {
+    const candidates = focusCandidates(addon);
+    let note = candidates.length ? candidates[0].note : undefined;
+    const previousId = noteId(addon && addon.__focusNextLastFocus);
+    if (previousId && candidates.length && noteId(note) === previousId) {
+      for (let index = 1; index < candidates.length; index += 1) {
+        if (noteId(candidates[index].note) !== previousId) {
+          note = candidates[index].note;
+          break;
+        }
+      }
+    }
+    if (note && addon) addon.__focusNextLastFocus = note;
     return note;
   }
 
-  function rememberCurrent(addon) {
-    try {
-      const note = currentNote(addon);
-      if (addon) addon.__focusNextLastKnownNote = note;
-      return note;
-    } catch (ignored) {
-      return undefined;
+  function navigationNote(addon) {
+    const live = rememberFocus(addon);
+    const remembered = addon && addon.__focusNextLastFocus;
+    if (live || remembered) return live || remembered;
+    throw new Error("请先双击进入一张脑图卡片焦点");
+  }
+
+  function adjacent(note) {
+    const parent = member(note, "parentNote");
+    const siblings = items(member(parent, "childNotes"));
+    if (!parent || !siblings.length) throw new Error("当前卡片没有同级兄弟卡片");
+    const id = noteId(note);
+    let index = -1;
+    for (let cursor = 0; cursor < siblings.length; cursor += 1) {
+      if (siblings[cursor] === note || (id && noteId(siblings[cursor]) === id)) { index = cursor; break; }
     }
+    if (index < 0) throw new Error("当前焦点不在脑图同级卡片列表中");
+    if (index + 1 >= siblings.length) throw new Error("已经是最后一张同级卡片");
+    return siblings[index + 1];
   }
 
-  function nextSibling(note) {
-    return adjacentSibling(note, 1);
-  }
-
-  function previousSibling(note) {
-    return adjacentSibling(note, -1);
-  }
-
-  function adjacentSibling(note, direction) {
-    const parent = nativeMember(note, "parentNote");
-    if (!parent) throw new Error("当前卡片没有父节点，无法进入下一张");
-    const siblings = nativeItems(nativeMember(parent, "childNotes"));
-    if (!siblings.length) throw new Error("当前卡片没有同级兄弟卡片");
-    const currentId = noteIdentifier(note);
-    let currentIndex = -1;
-    for (let index = 0; index < siblings.length; index += 1) {
-      if (siblings[index] === note || (currentId && noteIdentifier(siblings[index]) === currentId)) {
-        currentIndex = index;
-        break;
-      }
-    }
-    if (currentIndex < 0) throw new Error("当前卡片不在父节点的同级列表中");
-    const targetIndex = currentIndex + direction;
-    if (targetIndex < 0) throw new Error("已经是第一张同级卡片");
-    if (targetIndex >= siblings.length) throw new Error("已经是最后一张同级卡片");
-    return siblings[targetIndex];
+  function focusNext(addon) {
+    const current = navigationNote(addon);
+    const controller = studyController(addon);
+    const notebook = member(controller, "notebookController");
+    if (!notebook || typeof notebook.changeFocusToNote !== "function") throw new Error("当前 MarginNote 版本不支持切换脑图焦点");
+    if (!controller || typeof controller.focusNoteInMindMapById !== "function") throw new Error("当前 MarginNote 版本不支持脑图卡片定位");
+    const target = adjacent(current);
+    const targetId = noteId(target);
+    if (!targetId) throw new Error("下一张卡片缺少笔记 ID");
+    notebook.changeFocusToNote(target);
+    controller.focusNoteInMindMapById(targetId);
+    if (addon) addon.__focusNextLastFocus = target;
+    return { current, next: target, nextId: targetId };
   }
 
   function showMessage(addon, message) {
     try {
       const application = Application.sharedInstance();
-      if (application && typeof application.showHUD === "function") {
-        application.showHUD(String(message), addon && addon.window, 2);
-      }
-    } catch (error) {
-      console.log(`[Focus Next] 显示提示失败：${error && error.message || error}`);
-    }
-  }
-
-  function focusNext(addon) {
-    return focusAdjacent(addon, 1);
-  }
-
-  function focusPrevious(addon) {
-    return focusAdjacent(addon, -1);
-  }
-
-  function focusAdjacent(addon, direction) {
-    const application = Application.sharedInstance();
-    const studyController = application.studyController(addon && addon.window);
-    const notebookController = nativeMember(studyController, "notebookController");
-    if (!notebookController || typeof notebookController.changeFocusToNote !== "function") {
-      throw new Error("当前 MarginNote 版本不支持切换脑图焦点");
-    }
-    if (!studyController || typeof studyController.focusNoteInMindMapById !== "function") {
-      throw new Error("当前 MarginNote 版本不支持脑图卡片定位");
-    }
-    let observed;
-    try {
-      observed = currentNote(addon);
-    } catch (error) {
-      if (!addon) throw error;
-      observed = addon.__focusNextLastKnownNote || addon.__focusNextLastTarget;
-      if (!observed) throw error;
-    }
-
-    // 某些版本先更新脑图显示，稍后才更新 selViewLst/focusNote；此时沿用插件自己的导航游标。
-    let current = observed;
-    const observedId = noteIdentifier(observed);
-    const lastSourceId = String(addon && addon.__focusNextLastSourceId || "");
-    const lastTarget = addon && addon.__focusNextLastTarget;
-    if (lastTarget && observedId && lastSourceId && observedId === lastSourceId) current = lastTarget;
-
-    const target = adjacentSibling(current, direction);
-    const targetId = noteIdentifier(target);
-    if (!targetId) throw new Error(`${direction > 0 ? "下一张" : "上一张"}卡片缺少笔记 ID`);
-
-    function focusMindMap() {
-      studyController.focusNoteInMindMapById(targetId);
-    }
-
-    notebookController.changeFocusToNote(target);
-    focusMindMap();
-    if (addon) {
-      addon.__focusNextLastSourceId = noteIdentifier(current);
-      addon.__focusNextLastTarget = target;
-    }
-
-    const runId = Number(addon && addon.__focusNextRunId || 0) + 1;
-    if (addon) addon.__focusNextRunId = runId;
-
-    // 原生焦点切换可能要到动画结束后才更新，短暂重试可避免按钮点击后仍需手点卡片。
-    if (typeof NSTimer !== "undefined" && NSTimer.scheduledTimerWithTimeInterval) {
-      const retryIntervals = [0.12, 0.3, 0.6];
-      function retryFocus(index) {
-        if (addon && addon.__focusNextRunId !== runId) return;
-        try { focusMindMap(); } catch (error) {
-          console.log(`[Focus Next] 延迟进入下一张失败：${error && error.message || error}`);
-          return;
-        }
-        if (index >= retryIntervals.length) return;
-        NSTimer.scheduledTimerWithTimeInterval(retryIntervals[index], false, function () {
-          retryFocus(index + 1);
-        });
-      }
-      NSTimer.scheduledTimerWithTimeInterval(retryIntervals[0], false, function () {
-        retryFocus(1);
-      });
-    }
-    return { current, next: target, nextId: targetId };
+      if (application && typeof application.showHUD === "function") application.showHUD(String(message), addon && addon.window, 2);
+    } catch (error) { console.log(`[Focus Next] 显示提示失败：${error && error.message || error}`); }
   }
 
   function enabled() {
     try {
-      const stored = NSUserDefaults.standardUserDefaults().objectForKey(ENABLED_KEY);
-      if (stored === undefined || stored === null) return true;
-      if (typeof stored.booleanValue === "function") return Boolean(stored.booleanValue());
-      if (stored === false || stored === 0 || String(stored) === "0" || String(stored).toLowerCase() === "false") return false;
-      return true;
-    } catch (error) {
-      console.log(`[Focus Next] 读取按钮开关失败：${error && error.message || error}`);
-      return true;
-    }
+      const value = NSUserDefaults.standardUserDefaults().objectForKey(ENABLED_KEY);
+      if (value === undefined || value === null) return true;
+      if (typeof value.booleanValue === "function") return Boolean(value.booleanValue());
+      return !(value === false || value === 0 || String(value).toLowerCase() === "false");
+    } catch (error) { return true; }
   }
 
   function setEnabled(value) {
-    const next = Boolean(value);
-    try { NSUserDefaults.standardUserDefaults().setObjectForKey(next, ENABLED_KEY); } catch (error) {
-      console.log(`[Focus Next] 保存按钮开关失败：${error && error.message || error}`);
-    }
-    return next;
+    const result = Boolean(value);
+    try { NSUserDefaults.standardUserDefaults().setObjectForKey(result, ENABLED_KEY); } catch (ignored) {}
+    return result;
   }
 
-  return { nativeMember, nativeItems, noteIdentifier, currentNote, rememberCurrent, nextSibling, previousSibling, focusNext, focusPrevious, showMessage, enabled, setEnabled };
+  return { currentFocus, rememberFocus, focusNext, showMessage, enabled, setEnabled };
 })();
