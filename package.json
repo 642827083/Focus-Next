@@ -1,0 +1,11 @@
+{
+  "name": "focus-next",
+  "version": "1.0.3",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "build": "node scripts/build-test.js",
+    "build:release": "node scripts/build-release.js"
+  },
+  "mnaddonFileName": "Focus Next Test"
+}
