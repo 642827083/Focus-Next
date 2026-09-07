@@ -70,9 +70,27 @@ test("点击下一张只切换到当前卡片的下一个同级节点", () => {
   const core = runtime(studyController);
   const addon = { window: {} };
   assert.equal(core.focusNext(addon).next, two);
-  assert.deepEqual(order, ["change:2", "mindmap:2"]);
+  assert.deepEqual(order, ["change:2"]);
   studyController.notebookController.focusNote = two;
   assert.equal(core.focusNext(addon).next, three);
+});
+
+test("切换下一张不会调用脑图定位接口", () => {
+  const { one, two } = notes();
+  const order = [];
+  const studyController = {
+    notebookController: {
+      focusNote: one,
+      changeFocusToNote(note) {
+        this.focusNote = note;
+        order.push(`change:${note.noteId}`);
+      },
+    },
+    focusNoteInMindMapById(id) { order.push(`mindmap:${id}`); },
+  };
+  const core = runtime(studyController);
+  assert.equal(core.focusNext({ window: {} }).next, two);
+  assert.deepEqual(order, ["change:2"]);
 });
 
 test("按钮点击前焦点暂时不可读时使用最近一次真实焦点", () => {

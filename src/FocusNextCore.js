@@ -153,14 +153,10 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
     const controller = studyController(addon);
     const notebook = member(controller, "notebookController");
     if (!notebook || typeof notebook.changeFocusToNote !== "function") throw new Error("当前 MarginNote 版本不支持切换脑图焦点");
-    if (!controller || typeof controller.focusNoteInMindMapById !== "function") throw new Error("当前 MarginNote 版本不支持脑图卡片定位");
     const target = adjacent(current);
-    const targetId = noteId(target);
-    if (!targetId) throw new Error("下一张卡片缺少笔记 ID");
     notebook.changeFocusToNote(target);
-    controller.focusNoteInMindMapById(targetId);
     if (addon) addon.__focusNextLastFocus = target;
-    return { current, next: target, nextId: targetId };
+    return { current, next: target, nextId: noteId(target) };
   }
 
   function showMessage(addon, message) {
