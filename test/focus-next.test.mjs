@@ -93,6 +93,23 @@ test("切换下一张不会调用脑图定位接口", () => {
   assert.deepEqual(order, ["change:2"]);
 });
 
+test("点击上一张只切换到当前卡片的上一个同级节点", () => {
+  const { one, two, three } = notes();
+  const order = [];
+  const studyController = {
+    notebookController: {
+      focusNote: three,
+      changeFocusToNote(note) { order.push(`change:${note.noteId}`); this.focusNote = note; },
+    },
+  };
+  const core = runtime(studyController);
+  const addon = { window: {} };
+  assert.equal(core.focusPrevious(addon).next, two);
+  assert.deepEqual(order, ["change:2"]);
+  studyController.notebookController.focusNote = two;
+  assert.equal(core.focusPrevious(addon).next, one);
+});
+
 test("按钮点击前焦点暂时不可读时使用最近一次真实焦点", () => {
   const { one, two } = notes();
   const studyController = {
@@ -113,6 +130,12 @@ test("同级最后一张停止，不跨层级", () => {
   const { three } = notes();
   const core = runtime({ notebookController: { focusNote: three, changeFocusToNote() {} }, focusNoteInMindMapById() {} });
   assert.throws(() => core.focusNext({ window: {} }), /最后一张同级卡片/);
+});
+
+test("同级第一张停止，不跨层级", () => {
+  const { one } = notes();
+  const core = runtime({ notebookController: { focusNote: one, changeFocusToNote() {} } });
+  assert.throws(() => core.focusPrevious({ window: {} }), /第一张同级卡片/);
 });
 
 test("没有任何焦点时给出进入焦点提示", () => {
@@ -146,26 +169,31 @@ test("入口只导入模块并注册插件工厂", () => {
   assert.doesNotMatch(main, /(^|[;\n])\s*(import|require)\s*\(/);
 });
 
-test("界面只有标准下一张按钮，没有旧解析和上一张入口", () => {
+test("界面提供可拖动的上一张和下一张按钮", () => {
   const ui = readFileSync(new URL("../src/FocusNextUI.js", import.meta.url), "utf8");
   const addon = readFileSync(new URL("../src/FocusNextAddon.js", import.meta.url), "utf8");
   assert.match(ui, /"下一张"/);
+  assert.match(ui, /"上一张"/);
   assert.match(ui, /1 << 6/);
-  assert.doesNotMatch(ui, /解析|上一张|captureFocus|PressNote/);
-  assert.doesNotMatch(addon, /parseFocusNext|focusPrevious|captureFocus/);
+  assert.doesNotMatch(ui, /解析|captureFocus|PressNote/);
+  assert.match(addon, /focusPrevious: function/);
+  assert.match(addon, /handleFocusPreviousButtonPan: function/);
 });
 
-test("下一张按钮支持拖动并保存位置", () => {
+test("上一张和下一张按钮支持独立拖动并保存位置", () => {
   const ui = readFileSync(new URL("../src/FocusNextUI.js", import.meta.url), "utf8");
   const addon = readFileSync(new URL("../src/FocusNextAddon.js", import.meta.url), "utf8");
   assert.match(ui, /UIPanGestureRecognizer/);
   assert.match(ui, /next-button-position/);
-  assert.match(ui, /setObjectForKey\(JSON\.stringify\(position\), POSITION_KEY\)/);
+  assert.match(ui, /previous-button-position/);
+  assert.match(ui, /setObjectForKey\(JSON\.stringify\(position\), positionKey\)/);
   assert.match(ui, /xRatio/);
   assert.match(ui, /JSON\.stringify\(position\)/);
   assert.match(ui, /schedulePlace/);
-  assert.match(ui, /handlePan/);
+  assert.match(ui, /handleNextPan/);
+  assert.match(ui, /handlePreviousPan/);
   assert.match(addon, /handleFocusNextButtonPan: function/);
+  assert.match(addon, /handleFocusPreviousButtonPan: function/);
   assert.match(addon, /__focusNextSuppressTap/);
 });
 

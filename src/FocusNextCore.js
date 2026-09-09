@@ -134,7 +134,7 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
     throw new Error("请先双击进入一张脑图卡片焦点");
   }
 
-  function adjacent(note) {
+  function adjacent(note, offset) {
     const parent = member(note, "parentNote");
     const siblings = items(member(parent, "childNotes"));
     if (!parent || !siblings.length) throw new Error("当前卡片没有同级兄弟卡片");
@@ -144,19 +144,29 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
       if (siblings[cursor] === note || (id && noteId(siblings[cursor]) === id)) { index = cursor; break; }
     }
     if (index < 0) throw new Error("当前焦点不在脑图同级卡片列表中");
-    if (index + 1 >= siblings.length) throw new Error("已经是最后一张同级卡片");
-    return siblings[index + 1];
+    const targetIndex = index + offset;
+    if (targetIndex < 0) throw new Error("已经是第一张同级卡片");
+    if (targetIndex >= siblings.length) throw new Error("已经是最后一张同级卡片");
+    return siblings[targetIndex];
   }
 
-  function focusNext(addon) {
+  function focusSibling(addon, offset) {
     const current = navigationNote(addon);
     const controller = studyController(addon);
     const notebook = member(controller, "notebookController");
     if (!notebook || typeof notebook.changeFocusToNote !== "function") throw new Error("当前 MarginNote 版本不支持切换脑图焦点");
-    const target = adjacent(current);
+    const target = adjacent(current, offset);
     notebook.changeFocusToNote(target);
     if (addon) addon.__focusNextLastFocus = target;
     return { current, next: target, nextId: noteId(target) };
+  }
+
+  function focusNext(addon) {
+    return focusSibling(addon, 1);
+  }
+
+  function focusPrevious(addon) {
+    return focusSibling(addon, -1);
   }
 
   function showMessage(addon, message) {
@@ -181,5 +191,5 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
     return result;
   }
 
-  return { currentFocus, rememberFocus, focusNext, showMessage, enabled, setEnabled };
+  return { currentFocus, rememberFocus, focusNext, focusPrevious, showMessage, enabled, setEnabled };
 })();
