@@ -3,8 +3,6 @@ dist-test/
 dist-release/
 Focus Next Test.mnaddon
 
-# 已废弃的旧实现备份
-.tmp-old/
 
 # 历史正式安装包不参与当前源码提交
 Focus Next-v1.0.0.mnaddon
