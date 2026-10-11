@@ -8,3 +8,9 @@ Focus Next Test.mnaddon
 Focus Next-v1.0.0.mnaddon
 Focus Next-v1.0.1.mnaddon
 Focus Next-v1.0.2.mnaddon
+*.mnaddon
+*.mnaddon.zip
+AGENTS.md
+*社区介绍*.md
+*.gitignore.tmp
+.DS_Store
