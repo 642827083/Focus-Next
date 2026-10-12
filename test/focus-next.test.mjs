@@ -70,12 +70,12 @@ test("点击下一张只切换到当前卡片的下一个同级节点", () => {
   const core = runtime(studyController);
   const addon = { window: {} };
   assert.equal(core.focusNext(addon).next, two);
-  assert.deepEqual(order, ["change:2"]);
+  assert.deepEqual(order, ["change:2", "mindmap:2"]);
   studyController.notebookController.focusNote = two;
   assert.equal(core.focusNext(addon).next, three);
 });
 
-test("切换下一张不会调用脑图定位接口", () => {
+test("切换下一张按项目规范先切换焦点再定位", () => {
   const { one, two } = notes();
   const order = [];
   const studyController = {
@@ -90,8 +90,35 @@ test("切换下一张不会调用脑图定位接口", () => {
   };
   const core = runtime(studyController);
   assert.equal(core.focusNext({ window: {} }).next, two);
-  assert.deepEqual(order, ["change:2"]);
+  assert.deepEqual(order, ["change:2", "mindmap:2"]);
 });
+
+for (const direction of ["focusNext", "focusPrevious"]) {
+  test(`${direction}不访问导致闪退的原生视图接口`, () => {
+    const { one, two, three } = notes();
+    const nativeAccess = [];
+    const timers = [];
+    const mindmap = {};
+    for (const key of ["zoomScale", "contentOffset", "mindmapNodes", "setZoomScaleAnimated", "setContentOffsetAnimated"]) {
+      Object.defineProperty(mindmap, key, { get() {
+        nativeAccess.push(key);
+        throw new Error(`禁止调用尚未经真机验证的接口：${key}`);
+      } });
+    }
+    const controller = {
+      notebookController: {
+        focusNote: direction === "focusNext" ? one : three,
+        mindmapView: mindmap,
+        changeFocusToNote(note) { this.focusNote = note; },
+      },
+      focusNoteInMindMapById() { nativeAccess.push("focusNoteInMindMapById"); },
+    };
+    const core = runtime(controller, {}, timers);
+    assert.equal(core[direction]({ window: {} }).next, two);
+    assert.deepEqual(nativeAccess, ["focusNoteInMindMapById"]);
+    assert.deepEqual(timers, []);
+  });
+}
 
 test("点击上一张只切换到当前卡片的上一个同级节点", () => {
   const { one, two, three } = notes();

@@ -157,6 +157,7 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
     if (!notebook || typeof notebook.changeFocusToNote !== "function") throw new Error("当前 MarginNote 版本不支持切换脑图焦点");
     const target = adjacent(current, offset);
     notebook.changeFocusToNote(target);
+    if (typeof controller.focusNoteInMindMapById === "function") controller.focusNoteInMindMapById(noteId(target));
     if (addon) addon.__focusNextLastFocus = target;
     return { current, next: target, nextId: noteId(target) };
   }
