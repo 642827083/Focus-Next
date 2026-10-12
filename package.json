@@ -1,5 +1,5 @@
 {
-  "name": "focus-next",
+  "name": "focus-switch",
   "version": "1.0.7",
   "private": true,
   "scripts": {
@@ -7,5 +7,5 @@
     "build": "node scripts/build-test.js",
     "build:release": "node scripts/build-release.js"
   },
-  "mnaddonFileName": "Focus Next Test"
+  "mnaddonFileName": "Focus Switch Test"
 }

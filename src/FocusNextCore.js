@@ -1,5 +1,8 @@
 var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
   const ENABLED_KEY = "cn.marginnote.focus-next.enabled";
+  const PREVIOUS_ENABLED_KEY = "cn.marginnote.focus-next.previous-enabled";
+  const ORDINAL_ENABLED_KEY = "cn.marginnote.focus-next.ordinal-enabled";
+  const CROSS_LEVEL_ENABLED_KEY = "cn.marginnote.focus-next.cross-level-enabled";
 
   function member(object, key) {
     if (!object) return undefined;
@@ -150,12 +153,77 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
     return siblings[targetIndex];
   }
 
+  function siblingIndex(note, siblings) {
+    const id = noteId(note);
+    for (let index = 0; index < siblings.length; index += 1) {
+      if (siblings[index] === note || (id && noteId(siblings[index]) === id)) return index;
+    }
+    return -1;
+  }
+
+  function siblingProgress(note) {
+    const siblings = items(member(member(note, "parentNote"), "childNotes"));
+    const index = siblingIndex(note, siblings);
+    return index < 0 ? undefined : { index: index + 1, total: siblings.length };
+  }
+
+  function visit(note, visited) {
+    const id = noteId(note);
+    if (visited.some(function (entry) { return entry === note || (id && noteId(entry) === id); })) {
+      throw new Error("脑图层级存在循环，无法继续切换");
+    }
+    visited.push(note);
+  }
+
+  function depthFirstNext(note) {
+    const children = items(member(note, "childNotes"));
+    if (children.length) {
+      if (children[0] === note || (noteId(note) && noteId(children[0]) === noteId(note))) throw new Error("脑图层级存在循环，无法继续切换");
+      return children[0];
+    }
+    let cursor = note;
+    const visited = [];
+    while (cursor) {
+      visit(cursor, visited);
+      const parent = member(cursor, "parentNote");
+      if (!parent) break;
+      const siblings = items(member(parent, "childNotes"));
+      const index = siblingIndex(cursor, siblings);
+      if (index < 0) throw new Error("当前焦点不在脑图父节点的子卡片列表中");
+      if (index + 1 < siblings.length) return siblings[index + 1];
+      cursor = parent;
+    }
+    throw new Error("已经是整棵脑图的最后一张卡片");
+  }
+
+  function depthFirstPrevious(note) {
+    const parent = member(note, "parentNote");
+    if (!parent) throw new Error("已经是整棵脑图的第一张卡片");
+    const siblings = items(member(parent, "childNotes"));
+    const index = siblingIndex(note, siblings);
+    if (index < 0) throw new Error("当前焦点不在脑图父节点的子卡片列表中");
+    if (index === 0) {
+      if (parent === note || (noteId(note) && noteId(parent) === noteId(note))) throw new Error("脑图层级存在循环，无法继续切换");
+      return parent;
+    }
+    let cursor = siblings[index - 1];
+    const visited = [];
+    while (cursor) {
+      visit(cursor, visited);
+      const children = items(member(cursor, "childNotes"));
+      if (!children.length) return cursor;
+      cursor = children[children.length - 1];
+    }
+  }
+
   function focusSibling(addon, offset) {
     const current = navigationNote(addon);
     const controller = studyController(addon);
     const notebook = member(controller, "notebookController");
     if (!notebook || typeof notebook.changeFocusToNote !== "function") throw new Error("当前 MarginNote 版本不支持切换脑图焦点");
-    const target = adjacent(current, offset);
+    const target = crossLevelEnabled()
+      ? (offset > 0 ? depthFirstNext(current) : depthFirstPrevious(current))
+      : adjacent(current, offset);
     notebook.changeFocusToNote(target);
     if (typeof controller.focusNoteInMindMapById === "function") controller.focusNoteInMindMapById(noteId(target));
     if (addon) addon.__focusNextLastFocus = target;
@@ -174,23 +242,34 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
     try {
       const application = Application.sharedInstance();
       if (application && typeof application.showHUD === "function") application.showHUD(String(message), addon && addon.window, 2);
-    } catch (error) { console.log(`[Focus Next] 显示提示失败：${error && error.message || error}`); }
+    } catch (error) { console.log(`[Focus Switch] 显示提示失败：${error && error.message || error}`); }
   }
 
-  function enabled() {
+  function readBoolean(key, fallback) {
     try {
-      const value = NSUserDefaults.standardUserDefaults().objectForKey(ENABLED_KEY);
-      if (value === undefined || value === null) return true;
+      const value = NSUserDefaults.standardUserDefaults().objectForKey(key);
+      if (value === undefined || value === null) return fallback;
       if (typeof value.booleanValue === "function") return Boolean(value.booleanValue());
       return !(value === false || value === 0 || String(value).toLowerCase() === "false");
-    } catch (error) { return true; }
+    } catch (error) { return fallback; }
   }
 
-  function setEnabled(value) {
+  function writeBoolean(key, value) {
     const result = Boolean(value);
-    try { NSUserDefaults.standardUserDefaults().setObjectForKey(result, ENABLED_KEY); } catch (ignored) {}
+    try { NSUserDefaults.standardUserDefaults().setObjectForKey(result, key); } catch (ignored) {}
     return result;
   }
 
-  return { currentFocus, rememberFocus, focusNext, focusPrevious, showMessage, enabled, setEnabled };
+  function enabled() { return readBoolean(ENABLED_KEY, true); }
+  function setEnabled(value) { return writeBoolean(ENABLED_KEY, value); }
+  function previousEnabled() { return readBoolean(PREVIOUS_ENABLED_KEY, true); }
+  function setPreviousEnabled(value) { return writeBoolean(PREVIOUS_ENABLED_KEY, value); }
+  function ordinalEnabled() { return readBoolean(ORDINAL_ENABLED_KEY, false); }
+  function setOrdinalEnabled(value) { return writeBoolean(ORDINAL_ENABLED_KEY, value); }
+  function crossLevelEnabled() { return readBoolean(CROSS_LEVEL_ENABLED_KEY, false); }
+  function setCrossLevelEnabled(value) { return writeBoolean(CROSS_LEVEL_ENABLED_KEY, value); }
+
+  return { currentFocus, rememberFocus, focusNext, focusPrevious, siblingProgress, showMessage,
+    enabled, setEnabled, previousEnabled, setPreviousEnabled, ordinalEnabled, setOrdinalEnabled,
+    crossLevelEnabled, setCrossLevelEnabled };
 })();

@@ -185,8 +185,8 @@ test("开关默认开启并可持久化关闭", () => {
 });
 
 test("切换开关后刷新 MarginNote 工具栏命令状态", () => {
-  const addon = readFileSync(new URL("../src/FocusNextAddon.js", import.meta.url), "utf8");
-  assert.match(addon, /refreshAddonCommands\(\)/);
+  const commands = readFileSync(new URL("../src/FocusSwitchCommands.js", import.meta.url), "utf8");
+  assert.match(commands, /refreshAddonCommands\(\)/);
 });
 
 test("入口只导入模块并注册插件工厂", () => {

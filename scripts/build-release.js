@@ -8,7 +8,7 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"
 const lockJson = JSON.parse(fs.readFileSync(path.join(rootDir, "package-lock.json"), "utf8"));
 const version = packageJson.version;
 const stageDir = path.join(rootDir, "dist-release");
-const outputPath = path.join(rootDir, `Focus Next-v${version}.mnaddon`);
+const outputPath = path.join(rootDir, `Focus Switch-v${version}.mnaddon`);
 const zipPath = `${outputPath}.zip`;
 
 function copyDirectory(source, destination) {

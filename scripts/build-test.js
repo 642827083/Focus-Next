@@ -5,7 +5,7 @@ const { execFileSync } = require("child_process");
 const rootDir = path.join(__dirname, "..");
 const srcDir = path.join(rootDir, "src");
 const stageDir = path.join(rootDir, "dist-test");
-const outputPath = path.join(rootDir, "Focus Next Test.mnaddon");
+const outputPath = path.join(rootDir, "Focus Switch Test.mnaddon");
 const zipPath = `${outputPath}.zip`;
 
 function copyDirectory(source, destination) {

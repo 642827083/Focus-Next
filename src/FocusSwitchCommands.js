@@ -1,0 +1,66 @@
+var __FOCUS_NEXT_COMMANDS_GLOBAL__ = (function () {
+  const DOUBLE_CLICK_SECONDS = 0.3;
+
+  function refreshToolbar(addon) {
+    try {
+      const application = Application.sharedInstance();
+      const controller = application && typeof application.studyController === "function" ? application.studyController(addon.window) : undefined;
+      if (controller && typeof controller.refreshAddonCommands === "function") controller.refreshAddonCommands();
+    } catch (error) { console.log(`[Focus Switch] 刷新插件图标失败：${error && error.message || error}`); }
+  }
+
+  function apply(addon, key, value) {
+    const core = __FOCUS_NEXT_CORE_GLOBAL__;
+    if (key === "enabled") addon.focusNextEnabled = core.setEnabled(value);
+    else if (key === "crossLevel") core.setCrossLevelEnabled(value);
+    else if (key === "ordinal") core.setOrdinalEnabled(value);
+    else if (key === "previous") core.setPreviousEnabled(value);
+    else throw new Error("未知的焦点切换设置");
+    if (addon.focusNextEnabled !== false) __FOCUS_NEXT_UI_GLOBAL__.show(addon);
+    else __FOCUS_NEXT_UI_GLOBAL__.hide(addon);
+    __FOCUS_NEXT_SETTINGS_GLOBAL__.refresh(addon);
+    refreshToolbar(addon);
+  }
+
+  function cancelClick(addon) {
+    if (!addon) return;
+    addon.__focusNextClickToken = Number(addon.__focusNextClickToken || 0) + 1;
+    addon.__focusNextClickPending = false;
+    const timer = addon.__focusNextClickTimer;
+    addon.__focusNextClickTimer = null;
+    if (timer && typeof timer.invalidate === "function") timer.invalidate();
+  }
+
+  function toolbarClick(addon) {
+    const now = Date.now();
+    if (addon.__focusNextClickPending) {
+      const elapsed = now - Number(addon.__focusNextClickAt);
+      if (elapsed >= 0 && elapsed <= DOUBLE_CLICK_SECONDS * 1000) {
+        cancelClick(addon);
+        __FOCUS_NEXT_SETTINGS_GLOBAL__.hide(addon);
+        apply(addon, "enabled", !coreEnabled());
+        return;
+      }
+      cancelClick(addon);
+      __FOCUS_NEXT_SETTINGS_GLOBAL__.toggle(addon);
+    }
+    if (typeof NSTimer === "undefined" || typeof NSTimer.scheduledTimerWithTimeInterval !== "function") {
+      __FOCUS_NEXT_SETTINGS_GLOBAL__.toggle(addon);
+      return;
+    }
+    addon.__focusNextClickPending = true;
+    addon.__focusNextClickAt = now;
+    const token = Number(addon.__focusNextClickToken || 0) + 1;
+    addon.__focusNextClickToken = token;
+    // 等待双击窗口结束，避免双击时先弹出菜单。
+    addon.__focusNextClickTimer = NSTimer.scheduledTimerWithTimeInterval(DOUBLE_CLICK_SECONDS, false, function () {
+      if (addon.__focusNextClickToken !== token || !addon.__focusNextClickPending) return;
+      addon.__focusNextClickPending = false;
+      addon.__focusNextClickTimer = null;
+      __FOCUS_NEXT_SETTINGS_GLOBAL__.toggle(addon);
+    });
+  }
+
+  function coreEnabled() { return __FOCUS_NEXT_CORE_GLOBAL__.enabled(); }
+  return { apply, toolbarClick, cancelClick, refreshToolbar };
+})();
