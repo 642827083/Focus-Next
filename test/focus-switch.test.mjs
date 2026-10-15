@@ -31,18 +31,19 @@ function runtime(defaults = {}, width = 1024, height = 768) {
     setTitleColorForState() {}
   }
   let now = 0;
-  const timers = [], messages = [], calls = [];
+  const timers = [], messages = [], calls = [], urls = [];
   const nodes = tree();
   const controller = {
     view: new View({ x: 0, y: 0, width, height }),
-    notebookController: { focusNote: nodes.a1, changeFocusToNote(note) { calls.push(`change:${note.noteId}`); this.focusNote = note; } },
+    notebookController: { focusNote: nodes.a1, notebookId: "study-set", mindmapView: { selViewLst: [] }, changeFocusToNote(note) { calls.push(`change:${note.noteId}`); this.focusNote = note; } },
     focusNoteInMindMapById(id) { calls.push(`locate:${id}`); },
     refreshAddonCommands() { calls.push("refresh-toolbar"); },
   };
   const color = { colorWithAlphaComponent() { return this; } };
   const context = {
     console, Date: { now() { return now; } },
-    Application: { sharedInstance() { return { studyController() { return controller; }, showHUD(message) { messages.push(message); } }; } },
+    Application: { sharedInstance() { return { focusWindow: context.self && context.self.window, studyController() { return controller; }, showHUD(message) { messages.push(message); }, openURL(url) { urls.push(url.absoluteString); } }; } },
+    NSURL: { URLWithString(text) { return { absoluteString: text }; } },
     NSUserDefaults: { standardUserDefaults() { return {
       objectForKey(key) { return defaults[key]; }, setObjectForKey(value, key) { defaults[key] = value; },
     }; } },
@@ -76,7 +77,7 @@ function runtime(defaults = {}, width = 1024, height = 768) {
     }
     throw Error("测试中定时器未能停止");
   }
-  return { context, addon, controller, defaults, nodes, timers, messages, calls, advance };
+  return { context, addon, controller, defaults, nodes, timers, messages, calls, urls, advance };
 }
 
 test("更名保留插件身份、版本和旧设置，生成新的固定测试包名", () => {
@@ -93,7 +94,7 @@ test("更名保留插件身份、版本和旧设置，生成新的固定测试�
   assert.equal(run.addon.queryAddonCommandStatus().selector, "focusToolbarClick:");
 });
 
-test("单击只弹出窄面板，不改变导航开关；四项设置与说明准确", () => {
+test("单击只弹出窄面板，不改变导航开关；五项设置与说明准确", () => {
   const run = runtime();
   run.addon.focusToolbarClick(); run.advance(299);
   assert.equal(run.addon.__focusNextSettings, undefined);
@@ -102,9 +103,9 @@ test("单击只弹出窄面板，不改变导航开关；四项设置与说明�
   assert.equal(menu.panel.frame.width, 340);
   assert.equal(menu.panel.superview, run.controller.view);
   assert.equal(run.addon.focusNextEnabled, true);
-  assert.deepEqual(Array.from(menu.rows, row => row.title.text), ["启用焦点切换", "跨层级切换", "显示卡片序号", "显示上一张"]);
+  assert.deepEqual(Array.from(menu.rows, row => row.title.text), ["启用焦点切换", "跨层级切换", "显示卡片序号", "显示上一张", "查看原题"]);
   assert.match(menu.rows[2].description.text, /当前序号与同级卡片总数/);
-  assert.deepEqual(Array.from(menu.rows, row => row.control.on), [true, false, false, true]);
+  assert.deepEqual(Array.from(menu.rows, row => row.control.on), [true, false, false, true, false]);
   run.addon.closeFocusSettings();
   assert.equal(menu.panel.superview, undefined);
 });
@@ -325,3 +326,232 @@ for (const stored of ["broken-json", "null", '{"xRatio":null,"yRatio":0.5}', '{"
     assert.equal(menu.panel.frame.x, 672); assert.equal(menu.panel.frame.y, 100);
   });
 }
+
+const sourceCases = [
+  ["大观园数学", "daguanyuan-bridge?action=open&provider=math&question=42&year=0&url=" + encodeURIComponent("https://cxyonly.fans/math/practice/categories/8?questionId=42"), "DAGUANYUAN_QUESTION_ID:42"],
+  ["大观园408", "daguanyuan-bridge?action=open&provider=408&question=42&year=2023&url=" + encodeURIComponent("https://www.408os.cn/exercise?year=2023&questionId=42"), "DAGUANYUAN_408_QUESTION_ID:42"],
+  ["研客岸数学", "yankean-bridge?action=open&source=math&question=42", "YANKEAN_PAPER_QUESTION:MATH:42"],
+  ["研客岸408", "yankean-bridge?action=open&source=cse408&question=42&point=8&year=2023&number=6", "YANKEAN_PAPER_QUESTION:CSE408:42"],
+  ["研客岸耐刷王", "yankean-bridge?action=open&source=naishua&question=42", "YANKEAN_QUESTION:NAISHUA:42"],
+  ["研客岸模拟卷", "yankean-bridge?action=open&source=mock&question=42", "YANKEAN_QUESTION:MOCK:42"],
+  ["疾风劲草试卷", "jifengjincao-bridge?action=open&paper=8&question=42", "JFJC_QUESTION:8:42"],
+  ["疾风劲草单题", "jifengjincao-bridge?action=open&paper=0&question=42", "JFJC_QUESTION:0:42"],
+];
+
+function setSource(note, message = sourceCases[2][1], marker = sourceCases[2][2]) {
+  const url = "marginnote4app://addon/" + message;
+  note.comments = [{ text: "题干" }, { text: `[查看原题](${url})\n\n<!-- ${marker} -->` }];
+  return url;
+}
+
+for (const [name, message, marker] of sourceCases) {
+  test(`${name}选中题卡和进入焦点均打开对应插件原题链接，选中优先`, () => {
+    const run = runtime();
+    const expected = setSource(run.nodes.a2, message, marker);
+    run.addon.setSourceEnabled({ on: true });
+    run.controller.notebookController.mindmapView.selViewLst = [{ note: { note: run.nodes.a2 } }];
+    run.addon.pressOriginal(); run.addon.openOriginal();
+    assert.equal(run.urls[0], expected);
+    run.controller.notebookController.mindmapView.selViewLst = [];
+    run.controller.notebookController.visibleFocusNote = run.nodes.a2;
+    run.addon.pressOriginal(); run.addon.openOriginal();
+    assert.deepEqual(run.urls, [expected, expected]);
+    assert.equal(run.messages.length, 0);
+    assert.equal(run.calls.filter(call => /^(change|locate):/.test(call)).length, 0);
+  });
+}
+
+test("焦点读取短暂清空时，查看原题沿用当前学习集刚刚记住的焦点", () => {
+  const run = runtime();
+  const expected = setSource(run.nodes.a2);
+  run.addon.setSourceEnabled({ on: true });
+  run.controller.notebookController.focusNote = run.nodes.a2;
+  run.advance(160);
+  assert.equal(run.addon.__focusNextLastFocus, run.nodes.a2);
+  run.controller.notebookController.focusNote = null;
+  run.addon.pressOriginal(); run.addon.openOriginal();
+  assert.deepEqual(run.urls, [expected], `焦点已被导航记住，却提示：${run.messages.join("；")}`);
+});
+
+for (const mode of ["emptyNotebookId", "kvcNoteId"]) {
+  test(`前后切换能用的焦点也能查看原题：${mode}`, () => {
+    const run = runtime();
+    const expected = setSource(run.nodes.a2);
+    if (mode === "emptyNotebookId") run.controller.notebookController.notebookId = "";
+    if (mode === "kvcNoteId") {
+      delete run.nodes.a2.noteId;
+      run.nodes.a2.valueForKey = key => key === "noteId" ? "a2" : undefined;
+    }
+    run.addon.setSourceEnabled({ on: true });
+    run.addon.focusNext();
+    assert.equal(run.addon.__focusNextLastFocus, run.nodes.a2);
+    run.controller.notebookController.focusNote = null;
+    run.addon.pressOriginal(); run.addon.openOriginal();
+    assert.deepEqual(run.urls, [expected], `切换成功，但原题提示：${run.messages.join("；")}`);
+  });
+}
+
+test("总开关关闭会移除全部浮动按钮，保留子开关，重新开启恢复按钮", () => {
+  const run = runtime(); setSource(run.nodes.a1);
+  run.addon.setSourceEnabled({ on: true });
+  run.addon.pressOriginal();
+  run.addon.setFocusEnabled({ on: false });
+  for (const key of ["__focusPreviousButton", "__focusNextButton", "__focusSourceButton"]) {
+    assert.equal(run.addon[key].superview, undefined, key);
+    assert.equal(run.addon[key].hidden, true, key);
+  }
+  run.addon.openOriginal(); assert.deepEqual(run.urls, []);
+  assert.equal(run.context.__FOCUS_NEXT_CORE_GLOBAL__.sourceEnabled(), true);
+  run.addon.setFocusEnabled({ on: true });
+  for (const key of ["__focusPreviousButton", "__focusNextButton", "__focusSourceButton"]) assert.equal(run.addon[key].superview, run.controller.view);
+});
+
+test("查看原题默认关闭，服从总开关并保留设置，按钮拖动后恢复位置", () => {
+  const run = runtime();
+  run.addon.notebookWillOpen();
+  assert.equal(run.addon.__focusSourceButton, undefined);
+  run.addon.setSourceEnabled({ on: true });
+  const button = run.addon.__focusSourceButton;
+  assert.equal(button.title, "查看原题");
+  assert.equal(button.frame.y, run.addon.__focusNextButton.frame.y + 48);
+  assert.equal(button.gestures[0].selector, "handleFocusSourceButtonPan:");
+  run.addon.setFocusEnabled({ on: false });
+  assert.equal(run.addon.__focusNextButton.superview, undefined);
+  assert.equal(button.superview, undefined);
+  run.addon.setFocusEnabled({ on: true });
+  assert.equal(button.superview, run.controller.view);
+  const recognizer = { state: 1, translationInView() { return { x: -130, y: 60 }; }, setTranslationInView() {} };
+  run.addon.handleFocusSourceButtonPan(recognizer);
+  recognizer.state = 2; run.addon.handleFocusSourceButtonPan(recognizer);
+  recognizer.state = 3; run.addon.handleFocusSourceButtonPan(recognizer);
+  const moved = { ...button.frame };
+  setSource(run.nodes.a1);
+  run.addon.openOriginal();
+  assert.equal(run.urls.length, 0);
+  run.addon.setSourceEnabled({ on: false });
+  assert.equal(button.superview, undefined);
+  run.addon.openOriginal(); assert.equal(run.urls.length, 0);
+  run.addon.setSourceEnabled({ on: true });
+  for (const key of ["x", "y", "width", "height"]) assert.ok(Math.abs(button.frame[key] - moved[key]) < 0.001);
+  run.addon.setFocusEnabled({ on: false });
+  const restarted = runtime(run.defaults);
+  restarted.addon.notebookWillOpen();
+  assert.equal(restarted.addon.__focusNextButton, undefined);
+  assert.equal(restarted.addon.__focusSourceButton, undefined);
+  restarted.addon.setSourceEnabled({ on: true });
+  assert.equal(restarted.addon.__focusSourceButton, undefined);
+  restarted.addon.setFocusEnabled({ on: true });
+  for (const key of ["x", "y", "width", "height"]) assert.ok(Math.abs(restarted.addon.__focusSourceButton.frame[key] - moved[key]) < 0.001);
+  restarted.controller.view.frame = { x: 0, y: 0, width: 300, height: 320 };
+  restarted.advance(200);
+  const frame = restarted.addon.__focusSourceButton.frame;
+  assert.ok(frame.x >= 0 && frame.x + frame.width <= 300 && frame.y + frame.height <= 320);
+  const menu = openMenu(restarted);
+  assert.equal(menu.rows[4].control.on, true);
+  restarted.addon.notebookWillClose();
+  assert.equal(restarted.addon.__focusSourceButton.superview, undefined);
+});
+
+test("原题按钮按下后选中状态清空时仍打开刚才的题卡，不误用旧焦点", () => {
+  const run = runtime();
+  const url = setSource(run.nodes.a2);
+  run.addon.setSourceEnabled({ on: true });
+  run.controller.notebookController.mindmapView.selViewLst = [{ note: run.nodes.a2 }];
+  run.addon.pressOriginal();
+  run.controller.notebookController.mindmapView.selViewLst = [];
+  run.addon.openOriginal();
+  assert.deepEqual(run.urls, [url]);
+  assert.equal(run.addon.__focusNextSourcePress, null);
+});
+
+for (const entry of ["focusView", "focusNode", "keyPath"]) {
+  test(`脑图焦点仅通过${entry}暴露时，未选中也能查看原题`, () => {
+    const run = runtime();
+    const expected = setSource(run.nodes.a2);
+    run.controller.notebookController.focusNote = null;
+    if (entry === "keyPath") run.controller.valueForKeyPath = path => path === "notebookController.focusNote" ? run.nodes.a2 : undefined;
+    else run.controller.notebookController.mindmapView[entry] = { note: run.nodes.a2 };
+    run.addon.setSourceEnabled({ on: true });
+    assert.equal(run.context.__FOCUS_NEXT_CORE_GLOBAL__.currentFocus(run.addon), run.nodes.a2);
+    run.addon.pressOriginal(); run.addon.openOriginal();
+    assert.deepEqual(run.urls, [expected]);
+    assert.deepEqual(run.messages, []);
+    run.controller.notebookController.mindmapView[entry] = null;
+    run.controller.valueForKeyPath = undefined;
+    run.addon.openOriginal();
+    assert.equal(run.urls.length, 2);
+    run.addon.notebookWillClose(); run.addon.notebookWillOpen();
+    run.addon.openOriginal();
+    assert.equal(run.urls.length, 2);
+    assert.match(run.messages[0], /选中.*焦点/);
+  });
+}
+
+test("按下后换卡、切学习集、超时或窗口切换均不误跳转", () => {
+  for (const mode of ["note", "notebook", "timeout", "window"]) {
+    const run = runtime(); setSource(run.nodes.a1); setSource(run.nodes.a2);
+    if (mode === "timeout") run.controller.notebookController.focusNote = null;
+    run.addon.setSourceEnabled({ on: true });
+    if (mode === "timeout") run.controller.notebookController.mindmapView.selViewLst = [{ note: run.nodes.a1 }];
+    run.addon.pressOriginal();
+    if (mode === "note") run.controller.notebookController.focusNote = run.nodes.a2;
+    if (mode === "notebook") { run.controller.notebookController.notebookId = "another"; run.controller.notebookController.focusNote = null; }
+    if (mode === "timeout") { run.controller.notebookController.mindmapView.selViewLst = []; run.advance(801); }
+    if (mode === "window") {
+      const app = run.context.Application.sharedInstance(); app.focusWindow = {};
+      run.context.Application.sharedInstance = () => app;
+    }
+    run.addon.openOriginal();
+    assert.deepEqual(run.urls, [], mode);
+    assert.ok(run.messages.length, mode);
+  }
+});
+
+test("未记录当前学习集焦点时不借用无归属记忆，多选及普通卡片给出提示", () => {
+  const run = runtime(); setSource(run.nodes.a1);
+  run.controller.notebookController.focusNote = null;
+  run.addon.setSourceEnabled({ on: true });
+  run.addon.__focusNextLastFocus = run.nodes.a1;
+  run.addon.openOriginal(); assert.match(run.messages.pop(), /选中.*焦点/);
+  run.controller.notebookController.mindmapView.selViewLst = [{ note: run.nodes.a1 }, { note: run.nodes.a2 }];
+  run.addon.openOriginal(); assert.match(run.messages.pop(), /只选中一张/);
+  run.controller.notebookController.mindmapView.selViewLst = [{ note: run.nodes.b }];
+  run.addon.openOriginal(); assert.match(run.messages.pop(), /没有有效原题链接/);
+  assert.deepEqual(run.urls, []);
+});
+
+test("查看原题的焦点记忆跟随前后切换，跨学习集和关闭生命周期均不沿用", () => {
+  for (const mode of ["notebookId", "open", "close", "disconnect", "disabled"]) {
+    const run = runtime();
+    const expected = setSource(run.nodes.a2);
+    run.addon.setSourceEnabled({ on: true });
+    run.addon.focusNext();
+    run.controller.notebookController.focusNote = null;
+    run.addon.openOriginal();
+    assert.deepEqual(run.urls, [expected], mode);
+    if (mode === "notebookId") run.controller.notebookController.notebookId = "another";
+    if (mode === "open") run.addon.notebookWillOpen();
+    if (mode === "close") { run.addon.notebookWillClose(); run.addon.notebookWillOpen(); }
+    if (mode === "disconnect") { run.addon.sceneDidDisconnect(); run.addon.sceneWillConnect(); run.addon.notebookWillOpen(); }
+    if (mode === "disabled") { run.addon.setFocusEnabled({ on: false }); run.addon.setFocusEnabled({ on: true }); }
+    run.addon.openOriginal();
+    assert.equal(run.urls.length, 1, mode);
+    assert.match(run.messages.pop(), /选中.*焦点/, mode);
+  }
+});
+
+test("损坏链接、多个不同入口和题目身份冲突均停止，不改写题卡", () => {
+  for (const mode of ["invalid", "duplicate", "identity", "provider", "legacy"]) {
+    const run = runtime(); setSource(run.nodes.a1);
+    if (mode === "invalid") setSource(run.nodes.a1, "yankean-bridge?action=open&source=cse408&question=42");
+    if (mode === "duplicate") run.nodes.a1.comments.push({ text: "[查看原题](marginnote4app://addon/yankean-bridge?action=open&source=math&question=43)" });
+    if (mode === "identity") setSource(run.nodes.a1, sourceCases[2][1], "YANKEAN_QUESTION:43");
+    if (mode === "provider") setSource(run.nodes.a1, sourceCases[2][1], "DAGUANYUAN_QUESTION_ID:42");
+    if (mode === "legacy") run.nodes.a1.comments = [{ text: "[查看原题](https://bbkaoyan.cn/questions/42)" }];
+    const before = JSON.stringify(run.nodes.a1.comments);
+    run.addon.setSourceEnabled({ on: true }); run.addon.openOriginal();
+    assert.deepEqual(run.urls, [], mode);
+    assert.ok(run.messages.length, mode);
+    assert.equal(JSON.stringify(run.nodes.a1.comments), before);
+  }
+});

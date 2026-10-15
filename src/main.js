@@ -1,4 +1,5 @@
 JSB.require("FocusNextCore");
+JSB.require("FocusSwitchSource");
 JSB.require("FocusNextUI");
 JSB.require("FocusSwitchSettings");
 JSB.require("FocusSwitchCommands");

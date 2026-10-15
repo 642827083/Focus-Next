@@ -11,13 +11,19 @@ var __FOCUS_NEXT_COMMANDS_GLOBAL__ = (function () {
 
   function apply(addon, key, value) {
     const core = __FOCUS_NEXT_CORE_GLOBAL__;
-    if (key === "enabled") addon.focusNextEnabled = core.setEnabled(value);
+    if (key === "enabled") {
+      addon.focusNextEnabled = core.setEnabled(value);
+      if (!addon.focusNextEnabled) {
+        addon.__focusNextLastFocus = null;
+        addon.__focusNextLastNotebookId = null;
+      }
+    }
     else if (key === "crossLevel") core.setCrossLevelEnabled(value);
     else if (key === "ordinal") core.setOrdinalEnabled(value);
     else if (key === "previous") core.setPreviousEnabled(value);
+    else if (key === "source") { core.setSourceEnabled(value); __FOCUS_NEXT_SOURCE_GLOBAL__.clear(addon); }
     else throw new Error("未知的焦点切换设置");
-    if (addon.focusNextEnabled !== false) __FOCUS_NEXT_UI_GLOBAL__.show(addon);
-    else __FOCUS_NEXT_UI_GLOBAL__.hide(addon);
+    __FOCUS_NEXT_UI_GLOBAL__.show(addon);
     __FOCUS_NEXT_SETTINGS_GLOBAL__.refresh(addon);
     refreshToolbar(addon);
   }

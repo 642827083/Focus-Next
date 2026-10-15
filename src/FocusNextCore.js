@@ -3,6 +3,7 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
   const PREVIOUS_ENABLED_KEY = "cn.marginnote.focus-next.previous-enabled";
   const ORDINAL_ENABLED_KEY = "cn.marginnote.focus-next.ordinal-enabled";
   const CROSS_LEVEL_ENABLED_KEY = "cn.marginnote.focus-next.cross-level-enabled";
+  const SOURCE_ENABLED_KEY = "cn.marginnote.focus-next.source-enabled";
 
   function member(object, key) {
     if (!object) return undefined;
@@ -116,9 +117,13 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
 
   function rememberFocus(addon) {
     const candidates = focusCandidates(addon);
-    let note = candidates.length ? candidates[0].note : undefined;
+    const visible = candidates.find(function (candidate) {
+      return candidate.source === "visibleFocusNote" || candidate.source === "notebookController.visibleFocusNote";
+    });
+    let note = visible ? visible.note : candidates.length ? candidates[0].note : undefined;
     const previousId = noteId(addon && addon.__focusNextLastFocus);
-    if (previousId && candidates.length && noteId(note) === previousId) {
+    // 可见焦点是明确入口，不因重复读取而在滞后的 focusNote 之间来回切换。
+    if (!visible && previousId && candidates.length && noteId(note) === previousId) {
       for (let index = 1; index < candidates.length; index += 1) {
         if (noteId(candidates[index].note) !== previousId) {
           note = candidates[index].note;
@@ -126,13 +131,29 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
         }
       }
     }
-    if (note && addon) addon.__focusNextLastFocus = note;
+    if (note && addon) {
+      addon.__focusNextLastFocus = note;
+      addon.__focusNextLastNotebookId = String(member(member(studyController(addon), "notebookController"), "notebookId") || "");
+    }
     return note;
   }
 
+  function rememberedFocus(addon) {
+    const notebookId = String(member(member(studyController(addon), "notebookController"), "notebookId") || "");
+    if (!addon || addon.__focusNextLastNotebookId === undefined || addon.__focusNextLastNotebookId === null) return undefined;
+    // 有学习集 ID 时核对归属；宿主未返回 ID 时，由学习集打开／关闭回调清除记忆。
+    if (notebookId && addon.__focusNextLastNotebookId && addon.__focusNextLastNotebookId !== notebookId) return undefined;
+    return addon.__focusNextLastFocus;
+  }
+
+  function navigationFocus(addon) {
+    return rememberFocus(addon) || rememberedFocus(addon);
+  }
+
   function navigationNote(addon) {
-    const live = rememberFocus(addon);
-    const remembered = addon && addon.__focusNextLastFocus;
+    const live = navigationFocus(addon);
+    // 保留既有调用者直接提供导航起点的兼容入口。
+    const remembered = addon && addon.__focusNextLastNotebookId === undefined && addon.__focusNextLastFocus;
     if (live || remembered) return live || remembered;
     throw new Error("请先双击进入一张脑图卡片焦点");
   }
@@ -226,7 +247,10 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
       : adjacent(current, offset);
     notebook.changeFocusToNote(target);
     if (typeof controller.focusNoteInMindMapById === "function") controller.focusNoteInMindMapById(noteId(target));
-    if (addon) addon.__focusNextLastFocus = target;
+    if (addon) {
+      addon.__focusNextLastFocus = target;
+      addon.__focusNextLastNotebookId = String(member(notebook, "notebookId") || "");
+    }
     return { current, next: target, nextId: noteId(target) };
   }
 
@@ -268,8 +292,10 @@ var __FOCUS_NEXT_CORE_GLOBAL__ = (function () {
   function setOrdinalEnabled(value) { return writeBoolean(ORDINAL_ENABLED_KEY, value); }
   function crossLevelEnabled() { return readBoolean(CROSS_LEVEL_ENABLED_KEY, false); }
   function setCrossLevelEnabled(value) { return writeBoolean(CROSS_LEVEL_ENABLED_KEY, value); }
+  function sourceEnabled() { return readBoolean(SOURCE_ENABLED_KEY, false); }
+  function setSourceEnabled(value) { return writeBoolean(SOURCE_ENABLED_KEY, value); }
 
-  return { currentFocus, rememberFocus, focusNext, focusPrevious, siblingProgress, showMessage,
+  return { currentFocus, rememberFocus, rememberedFocus, navigationFocus, noteId, focusNext, focusPrevious, siblingProgress, showMessage,
     enabled, setEnabled, previousEnabled, setPreviousEnabled, ordinalEnabled, setOrdinalEnabled,
-    crossLevelEnabled, setCrossLevelEnabled };
+    crossLevelEnabled, setCrossLevelEnabled, sourceEnabled, setSourceEnabled };
 })();

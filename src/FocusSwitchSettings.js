@@ -5,10 +5,11 @@ var __FOCUS_NEXT_SETTINGS_GLOBAL__ = (function () {
   const PANEL_POSITION_KEY = "cn.marginnote.focus-next.settings-panel-position";
   const EDGE_MARGIN = 12;
   const options = [
-    { key: "enabled", title: "启用焦点切换", description: "在脑图中显示浮动导航按钮", action: "setFocusEnabled:" },
+    { key: "enabled", title: "启用焦点切换", description: "控制全部浮动按钮，关闭后全部隐藏", action: "setFocusEnabled:" },
     { key: "crossLevel", title: "跨层级切换", description: "按脑图层级连续切换全部卡片", action: "setCrossLevelEnabled:" },
     { key: "ordinal", title: "显示卡片序号", description: "在上一张和下一张按钮中显示当前序号与同级卡片总数", action: "setOrdinalEnabled:" },
-    { key: "previous", title: "显示上一张", description: "关闭后只显示下一张浮动按钮", action: "setPreviousEnabled:" },
+    { key: "previous", title: "显示上一张", description: "关闭后隐藏上一张按钮，保留下一张", action: "setPreviousEnabled:" },
+    { key: "source", title: "查看原题", description: "选中题卡或进入焦点后，在对应插件面板中查看原题", action: "setSourceEnabled:" },
   ];
 
   function viewFor(addon) {
@@ -128,7 +129,7 @@ var __FOCUS_NEXT_SETTINGS_GLOBAL__ = (function () {
     const menu = addon && addon.__focusNextSettings;
     if (!menu) return;
     const core = __FOCUS_NEXT_CORE_GLOBAL__;
-    const states = { enabled: core.enabled(), crossLevel: core.crossLevelEnabled(), ordinal: core.ordinalEnabled(), previous: core.previousEnabled() };
+    const states = { enabled: core.enabled(), crossLevel: core.crossLevelEnabled(), ordinal: core.ordinalEnabled(), previous: core.previousEnabled(), source: core.sourceEnabled() };
     menu.rows.forEach(function (row) { row.control.on = states[row.key]; });
   }
 

@@ -5,6 +5,7 @@ function createFocusNextAddon() {
       self.__focusNextRememberToken = 0;
       self.__focusNextPlaceToken = 0;
       self.__focusNextClickToken = 0;
+      __FOCUS_NEXT_SOURCE_GLOBAL__.clear(self);
       console.log("[Focus Switch] 插件已初始化");
     },
 
@@ -14,6 +15,8 @@ function createFocusNextAddon() {
       __FOCUS_NEXT_COMMANDS_GLOBAL__.cancelClick(self);
       __FOCUS_NEXT_SETTINGS_GLOBAL__.remove(self);
       __FOCUS_NEXT_UI_GLOBAL__.remove(self);
+      self.__focusNextLastFocus = null;
+      self.__focusNextLastNotebookId = null;
       self.focusNextEnabled = false;
     },
 
@@ -21,8 +24,9 @@ function createFocusNextAddon() {
       __FOCUS_NEXT_COMMANDS_GLOBAL__.cancelClick(self);
       __FOCUS_NEXT_SETTINGS_GLOBAL__.hide(self);
       self.__focusNextLastFocus = null;
-      if (self.focusNextEnabled !== false) __FOCUS_NEXT_UI_GLOBAL__.show(self);
-      else __FOCUS_NEXT_UI_GLOBAL__.hide(self);
+      self.__focusNextLastNotebookId = null;
+      __FOCUS_NEXT_SOURCE_GLOBAL__.clear(self);
+      __FOCUS_NEXT_UI_GLOBAL__.show(self);
     },
 
     queryAddonCommandStatus: function () {
@@ -45,8 +49,25 @@ function createFocusNextAddon() {
     setCrossLevelEnabled: function (sender) { __FOCUS_NEXT_COMMANDS_GLOBAL__.apply(self, "crossLevel", Boolean(sender.on)); },
     setOrdinalEnabled: function (sender) { __FOCUS_NEXT_COMMANDS_GLOBAL__.apply(self, "ordinal", Boolean(sender.on)); },
     setPreviousEnabled: function (sender) { __FOCUS_NEXT_COMMANDS_GLOBAL__.apply(self, "previous", Boolean(sender.on)); },
+    setSourceEnabled: function (sender) { __FOCUS_NEXT_COMMANDS_GLOBAL__.apply(self, "source", Boolean(sender.on)); },
+
+    pressOriginal: function () { __FOCUS_NEXT_SOURCE_GLOBAL__.press(self); },
+    openOriginal: function () {
+      if (self.__focusNextSuppressTap) {
+        self.__focusNextSuppressTap = false;
+        __FOCUS_NEXT_SOURCE_GLOBAL__.clear(self);
+        return;
+      }
+      if (!self.__focusSourceButton || self.__focusSourceButton.hidden) return;
+      try { __FOCUS_NEXT_SOURCE_GLOBAL__.open(self); }
+      catch (error) {
+        __FOCUS_NEXT_CORE_GLOBAL__.showMessage(self, String(error && error.message || error));
+        console.log(`[Focus Switch] 查看原题失败：${error && error.message || error}`);
+      }
+    },
 
     sceneWillResignActive: function () {
+      __FOCUS_NEXT_SOURCE_GLOBAL__.clear(self);
       __FOCUS_NEXT_COMMANDS_GLOBAL__.cancelClick(self);
       __FOCUS_NEXT_SETTINGS_GLOBAL__.hide(self);
     },
@@ -56,6 +77,7 @@ function createFocusNextAddon() {
       __FOCUS_NEXT_SETTINGS_GLOBAL__.hide(self);
       __FOCUS_NEXT_UI_GLOBAL__.hide(self);
       self.__focusNextLastFocus = null;
+      self.__focusNextLastNotebookId = null;
     },
 
     controllerWillLayoutSubviews: function () {
@@ -107,6 +129,9 @@ function createFocusNextAddon() {
 
     handleFocusPreviousButtonPan: function (recognizer) {
       __FOCUS_NEXT_UI_GLOBAL__.handlePreviousPan(self, recognizer);
+    },
+    handleFocusSourceButtonPan: function (recognizer) {
+      __FOCUS_NEXT_UI_GLOBAL__.handleSourcePan(self, recognizer);
     },
   });
 }

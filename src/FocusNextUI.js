@@ -5,6 +5,7 @@ var __FOCUS_NEXT_UI_GLOBAL__ = (function () {
   const RIGHT_MARGIN = 10;
   const NEXT_POSITION_KEY = "cn.marginnote.focus-next.next-button-position";
   const PREVIOUS_POSITION_KEY = "cn.marginnote.focus-next.previous-button-position";
+  const SOURCE_POSITION_KEY = "cn.marginnote.focus-next.source-button-position";
 
   function finiteNumber(value) {
     const number = Number(value);
@@ -48,7 +49,7 @@ var __FOCUS_NEXT_UI_GLOBAL__ = (function () {
       Math.max(0, Number(view && view.bounds && view.bounds.width) || MAX_BUTTON_WIDTH));
   }
 
-  function placeButton(addon, button, positionKey, rightSide) {
+  function placeButton(addon, button, positionKey, rightSide, verticalOffset) {
     const view = viewFor(addon);
     if (!button || !view || !view.bounds) return false;
     const saved = readSavedPosition(positionKey);
@@ -63,7 +64,7 @@ var __FOCUS_NEXT_UI_GLOBAL__ = (function () {
     const savedViewHeight = finiteNumber(saved && saved.viewHeight);
     const legacyWidth = Math.max(1, (savedViewWidth || view.bounds.width) - BUTTON_WIDTH);
     const legacyHeight = Math.max(1, (savedViewHeight || view.bounds.height) - BUTTON_HEIGHT);
-    const defaultY = availableHeight / 2;
+    const defaultY = Math.min(availableHeight, availableHeight / 2 + (verticalOffset || 0));
     const defaultX = rightSide ? Math.max(0, availableWidth - RIGHT_MARGIN) : RIGHT_MARGIN;
     const x = savedXRatio !== undefined ? savedXRatio * availableWidth : legacyX !== undefined ? (legacyX / legacyWidth) * availableWidth : defaultX;
     const y = savedYRatio !== undefined ? savedYRatio * availableHeight : legacyY !== undefined ? (legacyY / legacyHeight) * availableHeight : defaultY;
@@ -79,11 +80,13 @@ var __FOCUS_NEXT_UI_GLOBAL__ = (function () {
   function place(addon) {
     const previous = addon && addon.__focusPreviousButton;
     const next = addon && addon.__focusNextButton;
+    const source = addon && addon.__focusSourceButton;
     const view = viewFor(addon);
     if (!view || !view.bounds) return false;
     const previousPlaced = placeButton(addon, previous, PREVIOUS_POSITION_KEY, false);
     const nextPlaced = placeButton(addon, next, NEXT_POSITION_KEY, true);
-    return previousPlaced || nextPlaced;
+    const sourcePlaced = placeButton(addon, source, SOURCE_POSITION_KEY, true, BUTTON_HEIGHT + 12);
+    return previousPlaced || nextPlaced || sourcePlaced;
   }
 
   function savePosition(addon, button, positionKey) {
@@ -121,6 +124,7 @@ var __FOCUS_NEXT_UI_GLOBAL__ = (function () {
     if (!button || !view || !view.bounds) return;
     const state = Number(recognizer.state);
     if (state === 1) {
+      __FOCUS_NEXT_SOURCE_GLOBAL__.clear(addon);
       addon.__focusNextDragging = true;
       addon.__focusNextPlaceToken = Number(addon.__focusNextPlaceToken || 0) + 1;
       return;
@@ -170,10 +174,13 @@ var __FOCUS_NEXT_UI_GLOBAL__ = (function () {
   function rememberLoop(addon, token) {
     const next = addon && addon.__focusNextButton;
     const previous = addon && addon.__focusPreviousButton;
-    if (!addon || addon.__focusNextRememberToken !== token || (!next && !previous) ||
-      ((!next || next.hidden) && (!previous || previous.hidden))) return;
-    const note = __FOCUS_NEXT_CORE_GLOBAL__.rememberFocus(addon);
-    refreshProgress(addon, note);
+    const source = addon && addon.__focusSourceButton;
+    if (!addon || addon.__focusNextRememberToken !== token ||
+      ![next, previous, source].some(function (button) { return button && !button.hidden; })) return;
+    if (addon.focusNextEnabled !== false) {
+      const note = __FOCUS_NEXT_CORE_GLOBAL__.rememberFocus(addon);
+      refreshProgress(addon, note);
+    }
     const view = viewFor(addon);
     const bounds = view && view.bounds;
     const size = bounds && `${bounds.width},${bounds.height}`;
@@ -188,19 +195,23 @@ var __FOCUS_NEXT_UI_GLOBAL__ = (function () {
     if (!addon) return;
     const token = Number(addon.__focusNextRememberToken || 0) + 1;
     addon.__focusNextRememberToken = token;
-    const note = __FOCUS_NEXT_CORE_GLOBAL__.rememberFocus(addon);
-    refreshProgress(addon, note);
+    if (addon.focusNextEnabled !== false) {
+      const note = __FOCUS_NEXT_CORE_GLOBAL__.rememberFocus(addon);
+      refreshProgress(addon, note);
+    }
     if (typeof NSTimer === "undefined" || !NSTimer.scheduledTimerWithTimeInterval) return;
     NSTimer.scheduledTimerWithTimeInterval(0.15, false, function () { rememberLoop(addon, token); });
   }
 
   function show(addon) {
-    if (!addon || addon.focusNextEnabled === false) return false;
+    if (!addon) return false;
+    if (addon.focusNextEnabled === false) { hide(addon); return false; }
     const view = viewFor(addon);
     if (!view) return false;
     const buttonDefinitions = [
-      { property: "__focusPreviousButton", title: "上一张", action: "focusPrevious:", panAction: "handleFocusPreviousButtonPan:", visible: __FOCUS_NEXT_CORE_GLOBAL__.previousEnabled() },
-      { property: "__focusNextButton", title: "下一张", action: "focusNext:", panAction: "handleFocusNextButtonPan:" },
+      { property: "__focusPreviousButton", title: "上一张", action: "focusPrevious:", panAction: "handleFocusPreviousButtonPan:", visible: addon.focusNextEnabled !== false && __FOCUS_NEXT_CORE_GLOBAL__.previousEnabled() },
+      { property: "__focusNextButton", title: "下一张", action: "focusNext:", panAction: "handleFocusNextButtonPan:", visible: addon.focusNextEnabled !== false },
+      { property: "__focusSourceButton", title: "查看原题", action: "openOriginal:", pressAction: "pressOriginal:", panAction: "handleFocusSourceButtonPan:", visible: addon.focusNextEnabled !== false && __FOCUS_NEXT_CORE_GLOBAL__.sourceEnabled() },
     ];
     for (const definition of buttonDefinitions) {
       let button = addon[definition.property];
@@ -222,6 +233,7 @@ var __FOCUS_NEXT_UI_GLOBAL__ = (function () {
         button.layer.cornerRadius = 8;
         button.layer.masksToBounds = true;
         button.addTargetActionForControlEvents(addon, definition.action, 1 << 6);
+        if (definition.pressAction) button.addTargetActionForControlEvents(addon, definition.pressAction, 1 << 0);
         button.addGestureRecognizer(new UIPanGestureRecognizer(addon, definition.panAction));
         addon[definition.property] = button;
       }
@@ -242,7 +254,8 @@ var __FOCUS_NEXT_UI_GLOBAL__ = (function () {
       addon.__focusNextRememberToken = Number(addon.__focusNextRememberToken || 0) + 1;
       addon.__focusNextPlaceToken = Number(addon.__focusNextPlaceToken || 0) + 1;
     }
-    const buttons = [addon && addon.__focusPreviousButton, addon && addon.__focusNextButton];
+    const buttons = [addon && addon.__focusPreviousButton, addon && addon.__focusNextButton, addon && addon.__focusSourceButton];
+    __FOCUS_NEXT_SOURCE_GLOBAL__.clear(addon);
     for (const button of buttons) {
       if (!button) continue;
       button.hidden = true;
@@ -255,6 +268,7 @@ var __FOCUS_NEXT_UI_GLOBAL__ = (function () {
     if (addon) {
       addon.__focusPreviousButton = null;
       addon.__focusNextButton = null;
+      addon.__focusSourceButton = null;
     }
   }
 
@@ -265,6 +279,9 @@ var __FOCUS_NEXT_UI_GLOBAL__ = (function () {
   function handlePreviousPan(addon, recognizer) {
     handlePan(addon, recognizer, addon && addon.__focusPreviousButton, PREVIOUS_POSITION_KEY);
   }
+  function handleSourcePan(addon, recognizer) {
+    handlePan(addon, recognizer, addon && addon.__focusSourceButton, SOURCE_POSITION_KEY);
+  }
 
-  return { show, hide, remove, place, refreshProgress, handleNextPan, handlePreviousPan };
+  return { show, hide, remove, place, refreshProgress, handleNextPan, handlePreviousPan, handleSourcePan };
 })();
